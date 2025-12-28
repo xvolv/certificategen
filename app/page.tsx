@@ -76,6 +76,23 @@ export default function Home() {
     errors?: number;
     message?: string;
   }>({ state: "idle" });
+  const [customMessage, setCustomMessage] = useState(
+    "We are pleased to present you with your certificate from Addis Ababa University. Congratulations on your achievement!"
+  );
+  const [emailStatus, setEmailStatus] = useState<{
+    state: "idle" | "loading" | "done" | "error";
+    sent?: number;
+    failed?: number;
+    message?: string;
+  }>({ state: "idle" });
+  const [emailLogs, setEmailLogs] = useState<Array<{
+    fullName: string;
+    email?: string;
+    status: "sent" | "skipped" | "failed" | "error";
+    reason?: string;
+    error?: string;
+  }>>([]);
+  const [emailFilter, setEmailFilter] = useState<"all" | "sent" | "skipped" | "failed">("all");
 
   // Live preview helpers
   const objectUrl = useMemo(
@@ -287,7 +304,7 @@ export default function Home() {
     setLog((l) => [...l, `Done. Created ${created} certificates`]);
     if (limit) setStatusTen({ state: "done", created, errors: errors.length });
     else setStatusAll({ state: "done", created, errors: errors.length });
-    
+
     // Show preview of the first generated certificate
     const firstCreated = results.find((r: any) => r.status === "created");
     if (firstCreated) {
@@ -298,7 +315,7 @@ export default function Home() {
       });
       setLog((l) => [...l, `Preview: ${firstCreated.certificateNumber}`]);
     }
-    
+
     if (errors.length) {
       for (const err of errors) {
         setLog((l) => [...l, `Row '${err.fullName}': ${err.error}`]);
@@ -351,6 +368,77 @@ export default function Home() {
       setLog((l) => [...l, "Preview generation failed"]);
       setStatusOne({ state: "error", message: "Preview generation failed" });
     }
+  }
+
+  async function sendEmails() {
+    if (!batchId || preview.length === 0) {
+      setLog((l) => [...l, "No certificates to send emails for"]);
+      setEmailStatus({ state: "error", message: "No certificates loaded" });
+      return;
+    }
+
+    setEmailStatus({ state: "loading" });
+    setLog((l) => [...l, "Fetching certificates from database..."]);
+
+    // Fetch all certificates for this batch
+    const res = await fetch("/api/certificates/list", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ batchId }),
+    });
+
+    if (!res.ok) {
+      setLog((l) => [...l, "Error fetching certificates"]);
+      setEmailStatus({ state: "error", message: "Failed to fetch certificates" });
+      return;
+    }
+
+    const data = await res.json();
+    const certificateIds = (data.certificates || []).map((c: any) => c.id);
+
+    if (certificateIds.length === 0) {
+      setLog((l) => [...l, "No certificates found to send"]);
+      setEmailStatus({ state: "error", message: "No certificates found" });
+      return;
+    }
+
+    setLog((l) => [...l, `Sending emails to ${certificateIds.length} recipients...`]);
+
+    const emailRes = await fetch("/api/certificates/send-emails", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ certificateIds, customMessage }),
+    });
+
+    const emailData = await emailRes.json();
+
+    if (!emailRes.ok) {
+      setLog((l) => [...l, `Error: ${emailData.error}`]);
+      setEmailStatus({ state: "error", message: String(emailData.error) });
+      return;
+    }
+
+    const summary = emailData.summary || {};
+    const results = emailData.results || [];
+
+    // Populate email logs
+    setEmailLogs(results.map((r: any) => ({
+      fullName: r.fullName,
+      email: r.email,
+      status: r.status,
+      reason: r.reason,
+      error: r.error,
+    })));
+
+    setLog((l) => [
+      ...l,
+      `Emails sent: ${summary.sent || 0} successful, ${summary.failed || 0} failed, ${summary.skipped || 0} skipped`,
+    ]);
+    setEmailStatus({
+      state: "done",
+      sent: summary.sent,
+      failed: summary.failed,
+    });
   }
 
   return (
@@ -457,8 +545,8 @@ export default function Home() {
                   <span className="px-2 text-xs opacity-80">Position:</span>
                   <button
                     className={`rounded-full px-3 py-1 text-xs ${placeMode === "name"
-                        ? "bg-white text-black"
-                        : "bg-transparent hover:bg-white/20"
+                      ? "bg-white text-black"
+                      : "bg-transparent hover:bg-white/20"
                       }`}
                     onClick={() => setPlaceMode("name")}
                     title="Position Name"
@@ -467,8 +555,8 @@ export default function Home() {
                   </button>
                   <button
                     className={`rounded-full px-3 py-1 text-xs ${placeMode === "qr"
-                        ? "bg-white text-black"
-                        : "bg-transparent hover:bg-white/20"
+                      ? "bg-white text-black"
+                      : "bg-transparent hover:bg-white/20"
                       }`}
                     onClick={() => setPlaceMode("qr")}
                     title="Position QR"
@@ -799,6 +887,139 @@ export default function Home() {
               `  </div>
           )}
         </Section>
+
+        <div className="grid gap-6 lg:grid-cols-2">
+          <Section title="Send Emails">
+            <p className="text-sm text-zinc-600 dark:text-zinc-400">
+              Send generated certificates to recipients via email with a custom message.
+            </p>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">
+                  Custom Message
+                </label>
+                <textarea
+                  className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm outline-none ring-2 ring-transparent focus:ring-zinc-300 dark:border-zinc-800 dark:bg-zinc-900"
+                  rows={4}
+                  value={customMessage}
+                  onChange={(e) => setCustomMessage(e.target.value)}
+                  placeholder="Enter a custom congratulations message..."
+                />
+              </div>
+              <button
+                className="w-full inline-flex items-center justify-center rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-purple-700"
+                onClick={sendEmails}
+                disabled={emailStatus.state === "loading"}
+              >
+                {emailStatus.state === "loading" ? (
+                  <>
+                    <span className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
+                    Sending...
+                  </>
+                ) : (
+                  "📧 Send Emails to All"
+                )}
+              </button>
+              <div className="rounded-lg border border-zinc-200 bg-white/80 p-2 text-xs dark:border-zinc-800 dark:bg-zinc-900/70">
+                <div className="font-semibold text-zinc-700 dark:text-zinc-200">
+                  Email Status
+                </div>
+                {emailStatus.state === "idle" && (
+                  <div className="text-zinc-500 dark:text-zinc-400">Ready to send</div>
+                )}
+                {emailStatus.state === "loading" && (
+                  <div className="flex items-center gap-2 text-purple-700 dark:text-purple-300">
+                    <span>Sending in progress...</span>
+                  </div>
+                )}
+                {emailStatus.state === "done" && (
+                  <div className="text-emerald-700 dark:text-emerald-300">
+                    ✅ Sent: {emailStatus.sent || 0} | Failed: {emailStatus.failed || 0}
+                  </div>
+                )}
+                {emailStatus.state === "error" && (
+                  <div className="text-red-600 dark:text-red-400">
+                    {emailStatus.message || "Error"}
+                  </div>
+                )}
+              </div>
+            </div>
+          </Section>
+
+          <Section title="Email Logs">
+            <div className="flex flex-col h-full">
+              <div className="mb-4 flex flex-wrap gap-2">
+                {(["all", "sent", "skipped", "failed"] as const).map((f) => (
+                  <button
+                    key={f}
+                    onClick={() => setEmailFilter(f)}
+                    className={`rounded-md px-3 py-1 text-xs font-medium transition ${emailFilter === f
+                      ? "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300"
+                      : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700"
+                      }`}
+                  >
+                    {f.charAt(0).toUpperCase() + f.slice(1)}
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex-1 rounded-lg border border-zinc-200 bg-white/80 dark:border-zinc-800 dark:bg-zinc-900/70">
+                {emailLogs.length === 0 ? (
+                  <div className="flex h-40 items-center justify-center text-sm text-zinc-500 dark:text-zinc-400">
+                    No logs yet. Send emails to see results.
+                  </div>
+                ) : (
+                  <div className="max-h-[300px] overflow-auto p-2 space-y-2">
+                    {emailLogs
+                      .filter(l => emailFilter === "all" || l.status === (emailFilter as any))
+                      .map((log, idx) => (
+                        <div
+                          key={idx}
+                          className={`flex items-start justify-between rounded-lg border px-3 py-2 text-xs ${log.status === "sent"
+                            ? "border-emerald-200 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950"
+                            : log.status === "skipped"
+                              ? "border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950"
+                              : "border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950"
+                            }`}
+                        >
+                          <div className="flex-1">
+                            <div className="font-medium text-zinc-900 dark:text-zinc-100">
+                              {log.fullName}
+                            </div>
+                            {log.email && (
+                              <div className="text-zinc-600 dark:text-zinc-400">
+                                {log.email}
+                              </div>
+                            )}
+                            {(log.reason || log.error) && (
+                              <div className="mt-1 text-zinc-400 dark:text-zinc-500 italic">
+                                {log.reason || log.error}
+                              </div>
+                            )}
+                          </div>
+                          <div
+                            className={`ml-2 shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${log.status === "sent"
+                              ? "bg-emerald-600 text-white"
+                              : log.status === "skipped"
+                                ? "bg-amber-600 text-white"
+                                : "bg-red-600 text-white"
+                              }`}
+                          >
+                            {log.status.toUpperCase()}
+                          </div>
+                        </div>
+                      ))}
+                    {emailLogs.filter(l => emailFilter === "all" || l.status === (emailFilter as any)).length === 0 && (
+                      <div className="py-8 text-center text-zinc-500 dark:text-zinc-400">
+                        No {emailFilter} logs found.
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          </Section>
+        </div>
       </div>
 
       <div className="mt-6">

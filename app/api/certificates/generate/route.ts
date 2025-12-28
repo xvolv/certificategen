@@ -156,6 +156,7 @@ export async function POST(req: Request) {
             email: row.email ?? null,
             certificateNumber,
             qrData: verifyUrl,
+            imagePath: imagePath,
           },
         });
 
@@ -168,6 +169,7 @@ export async function POST(req: Request) {
           // pdfUrl: pdfPath, // PDF generation disabled
         });
       } catch (err: any) {
+        console.error("Certificate generation error for", row.fullName, ":", err);
         results.push({
           fullName: row.fullName,
           status: "error",
