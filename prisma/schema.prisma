@@ -13,6 +13,7 @@ model Certificate {
   email             String?
   certificateNumber String  @unique
   qrData            String? // Text to be displayed on the QR code
+  imagePath         String? // Local path to certificate image
 
   issuedAt DateTime @default(now())
 
