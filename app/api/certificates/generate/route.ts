@@ -37,10 +37,18 @@ export async function POST(req: Request) {
       );
     }
 
-    const template = await prisma.template.findUnique({
-      where: { id: templateId },
-    });
-    if (!template) {
+    const templateMetadataPath = path.join(
+      process.cwd(),
+      "certificate-store",
+      "templates",
+      `${templateId}.json`
+    );
+
+    let template;
+    try {
+      const metadataContent = await fs.promises.readFile(templateMetadataPath, "utf-8");
+      template = JSON.parse(metadataContent);
+    } catch (err) {
       return NextResponse.json(
         { error: "Template not found" },
         { status: 404 }
@@ -92,10 +100,8 @@ export async function POST(req: Request) {
         const svg = Buffer.from(
           `<svg width="${baseW}" height="${baseH}" xmlns="http://www.w3.org/2000/svg">
             <style>
-              .name { font-family: '${template.fontFamily}'; font-size: ${
-            template.fontSize
-          }px; font-weight: ${(template as any).fontWeight || "600"}; fill: ${
-            (template as any).fontColor || "#000000"
+              .name { font-family: '${template.fontFamily}'; font-size: ${template.fontSize
+          }px; font-weight: ${(template as any).fontWeight || "600"}; fill: ${(template as any).fontColor || "#000000"
           }; text-anchor: middle; dominant-baseline: central; }
             </style>
             <text x="${nameLeft}" y="${nameTop}" dy="${baselineDy}" class="name" text-anchor="middle" dominant-baseline="central">${escapeHtml(
@@ -145,9 +151,7 @@ export async function POST(req: Request) {
             fullName: row.fullName,
             email: row.email ?? null,
             certificateNumber,
-            templateId: template.id,
-            imageUrl: imagePath,
-            pdfUrl: pdfPath,
+            qrData: verifyUrl,
           },
         });
 
