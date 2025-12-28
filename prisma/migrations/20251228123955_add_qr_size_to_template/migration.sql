@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "Template" ADD COLUMN     "qrSize" INTEGER NOT NULL DEFAULT 200;
