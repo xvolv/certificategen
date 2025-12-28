@@ -13,7 +13,7 @@ function makeCertificateNumber(): string {
   const rand = Math.floor(Math.random() * 1e9)
     .toString()
     .padStart(9, "0");
-  return `AAU-${y}-${rand}`;
+  return `ATC${rand}${y}`;
 }
 
 export async function POST(req: Request) {
@@ -61,6 +61,7 @@ export async function POST(req: Request) {
 
     for (const row of rows) {
       try {
+        const fullName = (row.fullName || "").toUpperCase();
         const certificateNumber = makeCertificateNumber();
         // Idempotency check
         const existing = await prisma.certificate.findUnique({
@@ -105,7 +106,7 @@ export async function POST(req: Request) {
           }; text-anchor: middle; dominant-baseline: central; }
             </style>
             <text x="${nameLeft}" y="${nameTop}" dy="${baselineDy}" class="name" text-anchor="middle" dominant-baseline="central">${escapeHtml(
-            row.fullName
+            fullName
           )}</text>
           </svg>`
         );
@@ -152,11 +153,12 @@ export async function POST(req: Request) {
 
         const created = await prisma.certificate.create({
           data: {
-            fullName: row.fullName,
+            fullName: fullName,
             email: row.email ?? null,
             certificateNumber,
             qrData: verifyUrl,
             imagePath: imagePath,
+            // pdfUrl: pdfPath,
           },
         });
 
@@ -164,9 +166,9 @@ export async function POST(req: Request) {
           certificateNumber,
           status: "created",
           id: created.id,
-          fullName: row.fullName,
+          fullName: fullName,
           imageUrl: imagePath,
-          // pdfUrl: pdfPath, // PDF generation disabled
+          // pdfUrl: pdfPath,
         });
       } catch (err: any) {
         console.error("Certificate generation error for", row.fullName, ":", err);

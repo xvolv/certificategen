@@ -70,6 +70,11 @@ export async function POST(req: Request) {
 
                 // Create email HTML with custom message
                 const verifyUrl = `${process.env.APP_URL || "http://localhost:3000"}/verify/${certificate.id}`;
+                const titleCaseName = certificate.fullName
+                    .split(" ")
+                    .map((word: string) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+                    .join(" ");
+
                 const emailHtml = `
           <!DOCTYPE html>
           <html>
@@ -80,30 +85,35 @@ export async function POST(req: Request) {
                 .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
                 .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
                 .button { display: inline-block; background: #667eea; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; margin: 20px 0; }
-                .footer { text-align: center; margin-top: 30px; color: #666; font-size: 12px; }
+                .footer { text-align: center; margin-top: 10px; color: #666; font-size: 12px; }
               </style>
             </head>
             <body>
               <div class="container">
                 <div class="header">
-                  <h1>🎉 Congratulations, ${certificate.fullName}!</h1>
+                  <h1>Congratulations, ${titleCaseName}!</h1>
                 </div>
                 <div class="content">
-                  <p>${customMessage || "We are pleased to present you with your certificate from Addis Ababa University."}</p>
+                  <p>${customMessage || "We are pleased to present you with your certificate from Addis Ababa University Technology Workshop."}</p>
                   
-                  <p><strong>Certificate Number:</strong> ${certificate.certificateNumber}</p>
-                  
-                  <p>Your certificate is attached to this email. You can also verify it online anytime:</p>
+                  <p>Your certificate is attached to this email. You can also verify it online anytime either via the qr code directly from the certificate or this link:</p>
                   
                   <div style="text-align: center;">
-                    <a href="${verifyUrl}" class="button">Verify Certificate Online</a>
+                    <a href="${verifyUrl}" target="_blank">Verify Certificate Online</a>
                   </div>
                   
-                  <p style="margin-top: 30px;">Keep this certificate safe as proof of your achievement!</p>
+                  <p style="margin-top: 20px;">Keep this certificate safe as proof of your achievement!</p>
+                  
+                  <div style="text-align: center;">
+                    <p style="font-size: 14px; color: #555;">Download & share your achievement on LinkedIn and mention our page to shine! ✨</p>
+                    <a href="https://www.linkedin.com/company/aau-tech-club/" style="display: inline-block; background: #0077b5; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; font-weight: bold; font-size: 14px;">
+                      Follow ATC on LinkedIn
+                    </a>
+                    <p style="font-size: 12px; color: #888; margin-top: 10px;">For further opportunities and updates.</p>
+                  </div>
                 </div>
                 <div class="footer">
-                  <p>Addis Ababa University<br>
-                  This is an automated email. Please do not reply.</p>
+                  <p>Addis Ababa University Technology Club Workshop Team</p>
                 </div>
               </div>
             </body>
@@ -113,7 +123,7 @@ export async function POST(req: Request) {
                 // Send email with attachment
                 const result = await sendEmail(
                     certificate.email,
-                    `🎓 Your Certificate from AAU - ${certificate.certificateNumber}`,
+                    `🎓 Your Certificate from AAU Technology Workshop Team - ${certificate.certificateNumber}`,
                     emailHtml,
                     [
                         {

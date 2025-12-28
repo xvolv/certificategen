@@ -77,7 +77,7 @@ export default function Home() {
     message?: string;
   }>({ state: "idle" });
   const [customMessage, setCustomMessage] = useState(
-    "We are pleased to present you with your certificate from Addis Ababa University. Congratulations on your achievement!"
+    "We are pleased to present you with your certificate from Addis Ababa University Technology club workshop team!"
   );
   const [emailStatus, setEmailStatus] = useState<{
     state: "idle" | "loading" | "done" | "error";
