@@ -46,7 +46,7 @@ export default async function VerifyPage({
                     Certificate Verified
                 </h1>
                 <p className="text-slate-500 mb-8">
-                    This digital certificate is authentic and has been verified by our platform.
+                    This digital certificate is authentic and has been verified by <a href="https://www.linkedin.com/company/aau-tech-club/" target="_blank">Addis Ababa Technology Club</a>.
                 </p>
 
                 <div className="space-y-4 text-left border-t border-slate-100 pt-6">
@@ -84,7 +84,7 @@ export default async function VerifyPage({
 
                 <div className="mt-10 pt-6 border-t border-slate-100">
                     <p className="text-xs text-slate-400">
-                        QR Data: {certificate.qrData}
+                        Signed by <a href="https://t.me/AAU_Tech_Club" target="_blank">Addis Ababa Technology Club</a>
                     </p>
                 </div>
             </div>
