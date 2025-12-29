@@ -8,8 +8,14 @@ export default async function VerifyPage({
 }) {
     const { id } = await params;
 
-    const certificate = await prisma.certificate.findUnique({
-        where: { id },
+    // Try finding by internal ID (UUID) first, then by Certificate Number (Serial)
+    const certificate = await prisma.certificate.findFirst({
+        where: {
+            OR: [
+                { id },
+                { certificateNumber: id }
+            ]
+        },
     });
 
     if (!certificate) {

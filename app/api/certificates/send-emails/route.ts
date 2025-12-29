@@ -69,7 +69,7 @@ export async function POST(req: Request) {
                 const imageBase64 = imageBuffer.toString("base64");
 
                 // Create email HTML with custom message
-                const verifyUrl = `${process.env.APP_URL || "http://localhost:3000"}/verify/${certificate.id}`;
+                const verifyUrl = `${process.env.APP_URL || "http://localhost:3000"}/verify/${certificate.certificateNumber}`;
                 const titleCaseName = certificate.fullName
                     .split(" ")
                     .map((word: string) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
