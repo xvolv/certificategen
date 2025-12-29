@@ -108,6 +108,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       batchId,
       total: rows.length,
+      rows,
       preview: rows.slice(0, 10),
     });
   } catch (error) {

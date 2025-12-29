@@ -37,6 +37,7 @@ export default function Home() {
   // Data Source
   const [sheetUrl, setSheetUrl] = useState("");
   const [preview, setPreview] = useState<PreviewRow[]>([]);
+  const [allRows, setAllRows] = useState<PreviewRow[]>([]);
   const [total, setTotal] = useState<number | null>(null);
   const [batchId, setBatchId] = useState<string | null>(null);
 
@@ -208,6 +209,7 @@ export default function Home() {
     }
     setBatchId(data.batchId);
     setPreview(data.preview ?? []);
+    setAllRows(data.rows ?? []);
     setTotal(data.total ?? 0);
     setLog((l) => [...l, `Loaded ${data.total} rows`]);
   }
@@ -255,7 +257,6 @@ export default function Home() {
     });
     setLog((l) => [...l, `Template saved: ${data.template.id}`]);
   }
-
   async function generateCertificates(limit?: number) {
     if (!batchId || !templateId) {
       setLog((l) => [...l, "Ingest sheet and upload template first"]);
@@ -264,63 +265,126 @@ export default function Home() {
       else setStatusAll({ state: "error", message: "Load sheet & template" });
       return;
     }
+
+    const rowsToProcess = limit ? allRows.slice(0, limit) : allRows;
+
     if (limit) setStatusTen({ state: "loading" });
-    else setStatusAll({ state: "loading" });
-    setLog((l) => [...l, "Generating certificates..."]);
-    const body = limit
-      ? {
-        batchId,
-        templateId,
-        rows: preview.slice(0, limit),
-      }
-      : {
-        batchId,
-        templateId,
-        rows: preview, // Send all preview rows
-      };
-    const res = await fetch("/api/certificates/generate", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      setLog((l) => [...l, `Error: ${data.error}`]);
-      if (limit)
-        setStatusTen({
-          state: "error",
-          message: String(data.error || "Error"),
-        });
-      else
-        setStatusAll({
-          state: "error",
-          message: String(data.error || "Error"),
-        });
-      return;
-    }
-    const results = data.results ?? [];
-    const created = results.filter((r: any) => r.status === "created").length;
-    const errors = results.filter((r: any) => r.status === "error");
-    setLog((l) => [...l, `Done. Created ${created} certificates`]);
-    if (limit) setStatusTen({ state: "done", created, errors: errors.length });
-    else setStatusAll({ state: "done", created, errors: errors.length });
-
-    // Show preview of the first generated certificate
-    const firstCreated = results.find((r: any) => r.status === "created");
-    if (firstCreated) {
-      setLastPreview({
-        imageUrl: firstCreated.imageUrl,
-        certificateNumber: firstCreated.certificateNumber,
-        fullName: firstCreated.fullName || "Unknown",
+    else {
+      setStatusAll({
+        state: "loading",
+        created: 0,
+        errors: 0,
+        message: "Starting chunked generation...",
       });
-      setLog((l) => [...l, `Preview: ${firstCreated.certificateNumber}`]);
     }
 
-    if (errors.length) {
-      for (const err of errors) {
-        setLog((l) => [...l, `Row '${err.fullName}': ${err.error}`]);
+    setLog((l) => [
+      ...l,
+      `Generating ${rowsToProcess.length} certificates in chunks...`,
+    ]);
+
+    const chunkSize = 10;
+    const totalProcessed: any[] = [];
+    let totalCreated = 0;
+    let totalErrorCount = 0;
+
+    for (let i = 0; i < rowsToProcess.length; i += chunkSize) {
+      const chunk = rowsToProcess.slice(i, i + chunkSize);
+      const chunkNum = Math.floor(i / chunkSize) + 1;
+      const totalChunks = Math.ceil(rowsToProcess.length / chunkSize);
+
+      if (!limit) {
+        setStatusAll((s) => ({
+          ...s,
+          message: `Processing chunk ${chunkNum}/${totalChunks}...`,
+        }));
+      }
+
+      setLog((l) => [...l, `Processing chunk ${chunkNum}/${totalChunks}...`]);
+
+      try {
+        const res = await fetch("/api/certificates/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            batchId,
+            templateId,
+            rows: chunk,
+          }),
+        });
+
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.error || "Chunk generation failed");
+        }
+
+        const results = data.results ?? [];
+        totalProcessed.push(...results);
+
+        const chunkCreated = results.filter(
+          (r: any) => r.status === "created"
+        ).length;
+        const chunkErrors = results.filter((r: any) => r.status === "error");
+
+        totalCreated += chunkCreated;
+        totalErrorCount += chunkErrors.length;
+
+        // Show preview of the first generated certificate in the FIRST chunk
+        if (i === 0) {
+          const firstCreated = results.find((r: any) => r.status === "created");
+          if (firstCreated) {
+            setLastPreview({
+              imageUrl: firstCreated.imageUrl,
+              certificateNumber: firstCreated.certificateNumber,
+              fullName: firstCreated.fullName || "Unknown",
+            });
+            setLog((l) => [...l, `Preview: ${firstCreated.certificateNumber}`]);
+          }
+        }
+
+        if (chunkErrors.length) {
+          for (const err of chunkErrors) {
+            setLog((l) => [...l, `Row '${err.fullName}': ${err.error}`]);
+          }
+        }
+
+        // Update progress UI
+        if (limit) {
+          setStatusTen({
+            state: i + chunkSize >= rowsToProcess.length ? "done" : "loading",
+            created: totalCreated,
+            errors: totalErrorCount,
+          });
+        } else {
+          setStatusAll({
+            state: i + chunkSize >= rowsToProcess.length ? "done" : "loading",
+            created: totalCreated,
+            errors: totalErrorCount,
+            message:
+              i + chunkSize >= rowsToProcess.length
+                ? `Finished all chunks.`
+                : `Progress: ${Math.min(i + chunkSize, rowsToProcess.length)}/${rowsToProcess.length}`,
+          });
+        }
+      } catch (err: any) {
+        setLog((l) => [...l, `Error in chunk ${chunkNum}: ${err.message}`]);
+        if (limit) {
+          setStatusTen({ state: "error", message: err.message });
+        } else {
+          setStatusAll((s) => ({
+            ...s,
+            state: "error",
+            message: `Stopped at chunk ${chunkNum}: ${err.message}`,
+          }));
+        }
+        return; // Stop processing further chunks on error
       }
     }
+
+    setLog((l) => [
+      ...l,
+      `Batch finished. Total: ${totalCreated} success, ${totalErrorCount} errors.`,
+    ]);
   }
 
   async function generateOne() {
@@ -890,8 +954,8 @@ export default function Home() {
           </Section>
         </div>
 
-      <div className="w-full px-6 py-8 border-y border-zinc-200 bg-zinc-100/30 dark:border-zinc-800 dark:bg-zinc-900/20">
-        <div className="grid gap-6 lg:grid-cols-2">
+        <div className="w-full px-6 py-8 border-y border-zinc-200 bg-zinc-100/30 dark:border-zinc-800 dark:bg-zinc-900/20">
+          <div className="grid gap-6 lg:grid-cols-2">
             <Section title="Send Emails">
               <p className="text-sm text-zinc-600 dark:text-zinc-400">
                 Send generated certificates to recipients via email with a custom message.
@@ -1022,10 +1086,10 @@ export default function Home() {
                 </div>
               </div>
             </Section>
+          </div>
         </div>
-      </div>
 
-      <div className="w-full px-6 py-8">
+        <div className="w-full px-6 py-8">
           <Section title="Activity">
             <div className=" rounded-xl border border-zinc-200 bg-white/70 p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900/70">
               <div className="max-h-80 overflow-auto">
