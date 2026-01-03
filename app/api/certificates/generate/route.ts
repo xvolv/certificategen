@@ -13,7 +13,7 @@ function makeCertificateNumber(): string {
   const rand = Math.floor(Math.random() * 1e9)
     .toString()
     .padStart(9, "0");
-  return `AAU-${y}-${rand}`;
+  return `ATC${rand}${y}`;
 }
 
 export async function POST(req: Request) {
@@ -37,10 +37,18 @@ export async function POST(req: Request) {
       );
     }
 
-    const template = await prisma.template.findUnique({
-      where: { id: templateId },
-    });
-    if (!template) {
+    const templateMetadataPath = path.join(
+      process.cwd(),
+      "certificate-store",
+      "templates",
+      `${templateId}.json`
+    );
+
+    let template;
+    try {
+      const metadataContent = await fs.promises.readFile(templateMetadataPath, "utf-8");
+      template = JSON.parse(metadataContent);
+    } catch (err) {
       return NextResponse.json(
         { error: "Template not found" },
         { status: 404 }
@@ -53,6 +61,7 @@ export async function POST(req: Request) {
 
     for (const row of rows) {
       try {
+        const fullName = (row.fullName || "").toUpperCase();
         const certificateNumber = makeCertificateNumber();
         // Idempotency check
         const existing = await prisma.certificate.findUnique({
@@ -92,14 +101,12 @@ export async function POST(req: Request) {
         const svg = Buffer.from(
           `<svg width="${baseW}" height="${baseH}" xmlns="http://www.w3.org/2000/svg">
             <style>
-              .name { font-family: '${template.fontFamily}'; font-size: ${
-            template.fontSize
-          }px; font-weight: ${(template as any).fontWeight || "600"}; fill: ${
-            (template as any).fontColor || "#000000"
+              .name { font-family: '${template.fontFamily}'; font-size: ${template.fontSize
+          }px; font-weight: ${(template as any).fontWeight || "600"}; fill: ${(template as any).fontColor || "#000000"
           }; text-anchor: middle; dominant-baseline: central; }
             </style>
             <text x="${nameLeft}" y="${nameTop}" dy="${baselineDy}" class="name" text-anchor="middle" dominant-baseline="central">${escapeHtml(
-            row.fullName
+            fullName
           )}</text>
           </svg>`
         );
@@ -113,6 +120,9 @@ export async function POST(req: Request) {
           .png()
           .toBuffer();
 
+        // ===== PDF GENERATION DISABLED =====
+        // Uncomment below if you need PDF files in the future
+        /*
         // Create PDF via pdf-lib with the PNG embedded full-page
         const pdfDoc = await PDFDocument.create();
         const pngImage = await pdfDoc.embedPng(pngOut);
@@ -124,6 +134,7 @@ export async function POST(req: Request) {
           height: pngImage.height,
         });
         const pdfOut = await pdfDoc.save();
+        */
 
         // Save outputs locally
         const imagesDir = path.join(
@@ -131,23 +142,30 @@ export async function POST(req: Request) {
           "certificate-store",
           "images"
         );
-        const pdfsDir = path.join(process.cwd(), "certificate-store", "pdfs");
+        // const pdfsDir = path.join(process.cwd(), "certificate-store", "pdfs");
         await fs.promises.mkdir(imagesDir, { recursive: true });
-        await fs.promises.mkdir(pdfsDir, { recursive: true });
-        const fileBase = `${certificateNumber}`;
+        // await fs.promises.mkdir(pdfsDir, { recursive: true });
+        const nameSlug = fullName
+          .toLowerCase()
+          .trim()
+          .split(/\s+/)
+          .slice(0, 2)
+          .join("-")
+          .replace(/[^a-z0-9-]/g, "");
+        const fileBase = `${nameSlug}-${certificateNumber}`;
         const imagePath = path.join(imagesDir, `${fileBase}.png`);
-        const pdfPath = path.join(pdfsDir, `${fileBase}.pdf`);
+        // const pdfPath = path.join(pdfsDir, `${fileBase}.pdf`);
         await fs.promises.writeFile(imagePath, pngOut);
-        await fs.promises.writeFile(pdfPath, pdfOut);
+        // await fs.promises.writeFile(pdfPath, pdfOut);
 
         const created = await prisma.certificate.create({
           data: {
-            fullName: row.fullName,
+            fullName: fullName,
             email: row.email ?? null,
             certificateNumber,
-            templateId: template.id,
-            imageUrl: imagePath,
-            pdfUrl: pdfPath,
+            qrData: certificateNumber,
+            imagePath: imagePath,
+            // pdfUrl: pdfPath,
           },
         });
 
@@ -155,10 +173,12 @@ export async function POST(req: Request) {
           certificateNumber,
           status: "created",
           id: created.id,
+          fullName: fullName,
           imageUrl: imagePath,
-          pdfUrl: pdfPath,
+          // pdfUrl: pdfPath,
         });
       } catch (err: any) {
+        console.error("Certificate generation error for", row.fullName, ":", err);
         results.push({
           fullName: row.fullName,
           status: "error",

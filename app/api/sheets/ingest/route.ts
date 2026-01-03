@@ -51,14 +51,19 @@ export async function POST(req: Request) {
 
     const exportUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=csv&gid=${gid}`;
     const resp = await fetch(exportUrl, { cache: "no-store" });
-    if (!resp.ok) {
-      const text = await resp.text();
+    const contentType = resp.headers.get("content-type");
+    const text = await resp.text();
+
+    if (!resp.ok || contentType?.includes("text/html") || text.trim().startsWith("<!DOCTYPE html>") || text.trim().startsWith("<html")) {
       return NextResponse.json(
-        { error: `CSV export error: ${text}` },
-        { status: 502 }
+        {
+          error: "The spreadsheet is private or inaccessible.",
+          details: "Please ensure the Google Sheet is shared as 'Anyone with the link can view'."
+        },
+        { status: 403 }
       );
     }
-    const csv = await resp.text();
+    const csv = text;
     const values = parseCsv(csv);
     if (values.length === 0) {
       return NextResponse.json({ error: "No rows found" }, { status: 400 });
@@ -103,6 +108,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       batchId,
       total: rows.length,
+      rows,
       preview: rows.slice(0, 10),
     });
   } catch (error) {

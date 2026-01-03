@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { prisma } from "../../../lib/prisma";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -45,24 +44,28 @@ export async function POST(req: Request) {
     );
     await fs.promises.mkdir(storeRoot, { recursive: true });
     const safeName = (file as any).name?.toString?.() ?? `template.png`;
-    const base = `${Date.now()}-${safeName.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
+    const templateId = crypto.randomUUID();
+    const base = `${templateId}-${safeName.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
     const fullPath = path.join(storeRoot, base);
     await fs.promises.writeFile(fullPath, buffer);
 
-    const template = await prisma.template.create({
-      data: {
-        templateUrl: fullPath,
-        nameX,
-        nameY,
-        qrX,
-        qrY,
-        qrSize,
-        fontSize,
-        fontFamily,
-        fontWeight,
-        fontColor,
-      },
-    });
+    // Store template metadata in a JSON file
+    const template = {
+      id: templateId,
+      templateUrl: fullPath,
+      nameX,
+      nameY,
+      qrX,
+      qrY,
+      qrSize,
+      fontSize,
+      fontFamily,
+      fontWeight,
+      fontColor,
+    };
+
+    const metadataPath = path.join(storeRoot, `${templateId}.json`);
+    await fs.promises.writeFile(metadataPath, JSON.stringify(template, null, 2));
 
     return NextResponse.json({ template });
   } catch (error) {
